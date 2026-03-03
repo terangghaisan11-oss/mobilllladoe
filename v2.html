@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Car Dodge World</title>
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  font-family:Arial;
+  background:linear-gradient(#0f2027,#203a43,#2c5364);
+  color:white;
+}
+canvas{display:block;}
+.ui{
+  position:fixed;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.6);
+  padding:10px 20px;
+  border-radius:15px;
+  backdrop-filter:blur(5px);
+  text-align:center;
+}
+button{
+  margin:3px;
+  padding:6px 12px;
+  border:none;
+  border-radius:10px;
+  font-weight:bold;
+  cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<div class="ui">
+Coins: <span id="coins">0</span> |
+Score: <span id="score">0</span> |
+Best: <span id="best">0</span><br>
+<button onclick="gacha()">🎲 Gacha (100)</button>
+<button onclick="changeSkin()">🎨 Skin</button>
+<button onclick="redeem()">🎁 Redeem</button>
+<button onclick="toggleMusic()">🎵 Music</button>
+<div id="worldBoard"></div>
+</div>
+
+<canvas id="game"></canvas>
+
+<audio id="bgm" loop>
+<source src="https://cdn.pixabay.com/audio/2022/03/15/audio_115b9b1f94.mp3">
+</audio>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+// AUTO LOAD
+let coins=parseInt(localStorage.getItem("coins"))||0;
+let best=parseInt(localStorage.getItem("best"))||0;
+let skins=JSON.parse(localStorage.getItem("skins"))||["red"];
+let currentSkin=localStorage.getItem("currentSkin")||"red";
+let redeemed=localStorage.getItem("redeemed")||"no";
+
+document.getElementById("coins").innerText=coins;
+document.getElementById("best").innerText=best;
+
+let player={
+x:canvas.width/2-40,
+y:canvas.height-150,
+width:80,
+height:140,
+speed:10
+};
+
+let cars=[];
+let score=0;
+let gameOver=false;
+
+// DRAW CAR (gradient skin)
+function drawCar(x,y,color){
+ctx.save();
+ctx.translate(x,y);
+
+if(color==="rainbow"){
+let grad=ctx.createLinearGradient(0,0,80,0);
+grad.addColorStop(0,"red");
+grad.addColorStop(0.2,"orange");
+grad.addColorStop(0.4,"yellow");
+grad.addColorStop(0.6,"lime");
+grad.addColorStop(0.8,"cyan");
+grad.addColorStop(1,"magenta");
+ctx.fillStyle=grad;
+}
+else if(color.includes("-")){
+let parts=color.split("-");
+let grad=ctx.createLinearGradient(0,0,80,0);
+grad.addColorStop(0,parts[0]);
+grad.addColorStop(1,parts[1]);
+ctx.fillStyle=grad;
+}
+else{
+ctx.fillStyle=color;
+}
+
+ctx.beginPath();
+ctx.moveTo(40,0);
+ctx.quadraticCurveTo(80,20,80,50);
+ctx.lineTo(80,120);
+ctx.quadraticCurveTo(80,140,40,140);
+ctx.quadraticCurveTo(0,140,0,120);
+ctx.lineTo(0,50);
+ctx.quadraticCurveTo(0,20,40,0);
+ctx.fill();
+
+ctx.fillStyle="black";
+ctx.fillRect(15,30,50,40);
+
+ctx.restore();
+}
+
+// SPAWN ENEMY
+function spawnCar(){
+let x=Math.random()*(canvas.width-80);
+cars.push({x:x,y:-160});
+}
+
+// LEDAKAN BAGUS
+function explosion(x,y){
+for(let i=0;i<50;i++){
+let px = x + (Math.random()-0.5)*200;
+let py = y + (Math.random()-0.5)*200;
+ctx.fillStyle = `hsl(${Math.random()*360},100%,60%)`;
+ctx.beginPath();
+ctx.arc(px,py,6,0,Math.PI*2);
+ctx.fill();
+}
+}
+
+// GAME OVER
+function endGame(){
+gameOver=true;
+explosion(player.x,player.y);
+
+if(score>best){
+best=score;
+localStorage.setItem("best",best);
+uploadScore(best);
+}
+
+coins+=score;
+autoSave();
+
+setTimeout(()=>{
+ctx.fillStyle="black";
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+ctx.fillStyle="red";
+ctx.font="50px Arial";
+ctx.textAlign="center";
+ctx.fillText("ANDA MATI", canvas.width/2, canvas.height/2);
+
+ctx.font="20px Arial";
+ctx.fillStyle="white";
+ctx.fillText("Score: "+score, canvas.width/2, canvas.height/2+50);
+},200);
+
+setTimeout(()=>location.reload(),2000);
+}
+
+// MAIN LOOP
+function update(){
+if(gameOver)return;
+
+ctx.clearRect(0,0,canvas.width,canvas.height);
+ctx.fillStyle="#444";
+ctx.fillRect(canvas.width/2-150,0,300,canvas.height);
+
+drawCar(player.x,player.y,currentSkin);
+
+for(let i=0;i<cars.length;i++){
+cars[i].y+=8;
+drawCar(cars[i].x,cars[i].y,"yellow");
+
+if(player.x<cars[i].x+80 &&
+player.x+80>cars[i].x &&
+player.y<cars[i].y+140 &&
+player.y+140>cars[i].y){
+endGame();
+}
+}
+
+score++;
+document.getElementById("score").innerText=score;
+requestAnimationFrame(update);
+}
+
+setInterval(spawnCar,1000);
+update();
+
+// CONTROL
+document.addEventListener("keydown",e=>{
+if(e.key==="ArrowLeft")player.x-=player.speed;
+if(e.key==="ArrowRight")player.x+=player.speed;
+});
+
+canvas.addEventListener("touchmove",e=>{
+player.x=e.touches[0].clientX-40;
+});
+
+// AUTO SAVE
+function autoSave(){
+localStorage.setItem("coins",coins);
+localStorage.setItem("skins",JSON.stringify(skins));
+localStorage.setItem("currentSkin",currentSkin);
+localStorage.setItem("redeemed",redeemed);
+document.getElementById("coins").innerText=coins;
+}
+
+// GACHA
+function gacha(){
+if(coins<100){alert("Koin kurang!");return;}
+coins-=100;
+
+let roll=Math.random()*100;
+let reward;
+
+if(roll<0.5){
+reward="rainbow"; // SECRET 0.5%
+alert("🌈 SECRET RAINBOW!");
+}
+else if(roll<5){
+let colors=["red","blue","green","purple","orange","pink","cyan","lime"];
+let c1=colors[Math.floor(Math.random()*colors.length)];
+let c2=colors[Math.floor(Math.random()*colors.length)];
+reward=`${c1}-${c2}`; // kombinasi
+}
+else{
+let colors=["blue","green","purple","orange","pink","lime","cyan"];
+reward=colors[Math.floor(Math.random()*colors.length)];
+}
+
+if(!skins.includes(reward)){
+skins.push(reward);
+alert("Dapat skin: "+reward);
+}else{
+coins+=50;
+alert("Duplikat! +50 Coins");
+}
+
+autoSave();
+}
+
+// CHANGE SKIN
+function changeSkin(){
+let pilih=prompt("Skin kamu:\n"+skins.join(", "));
+if(skins.includes(pilih)){
+currentSkin=pilih;
+autoSave();
+}
+}
+
+// REDEEM CODE
+function redeem(){
+let code=prompt("Masukkan code:");
+if(code==="gavinbrembo" && redeemed==="no"){
+skins.push("rainbow");
+redeemed="yes";
+alert("Redeem berhasil! 🌈");
+autoSave();
+}else{
+alert("Code salah / sudah dipakai");
+}
+}
+
+// BACKSOUND
+function toggleMusic(){
+let bgm=document.getElementById("bgm");
+if(bgm.paused)bgm.play();
+else bgm.pause();
+}
+
+// LEADERBOARD ONLINE (JSONBIN)
+async function uploadScore(score){
+try{
+await fetch("https://api.jsonbin.io/v3/b/YOUR_BIN_ID",{
+method:"PUT",
+headers:{
+"Content-Type":"application/json",
+"X-Master-Key":"YOUR_JSONBIN_KEY"
+},
+body:JSON.stringify({best:score})
+});
+}catch(e){}
+}
+
+async function loadLeaderboard(){
+try{
+let res=await fetch("https://api.jsonbin.io/v3/b/YOUR_BIN_ID");
+let data=await res.json();
+document.getElementById("worldBoard").innerText=
+"🏆 World Best: "+(data.record?.best||0);
+}catch(e){}
+}
+
+setInterval(loadLeaderboard,5000);
+</script>
+
+</body>
+</html>
